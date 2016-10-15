@@ -5,7 +5,8 @@
     user: pi
     repo_url: git://github.com/HumanDynamics/openbadge-hub-py.git
     dest_location: /home/{{user}}/openbadge-hub-py
-  remote_user: pi
+    remote_user: pi
+
   tasks:
   - name: Installing System Packages
     apt: name={{ item }} state=present update_cache=yes

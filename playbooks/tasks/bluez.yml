@@ -53,4 +53,5 @@
 # sudo systemctl enable bluetooth
 # sudo systemctl daemon-reload
 # need to run this after restart. every time... - /usr/bin/hciattach /dev/ttyAMA0 bcm43xx 921600 noflow -
+# maybe related to this - sudo nano /lib/systemd/system/hciuart.service - trying to do serial1 instead of AMA
 # sudo apt-mark hold bluez
