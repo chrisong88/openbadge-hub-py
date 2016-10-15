@@ -1,0 +1,56 @@
+---
+# based on - https://www.element14.com/community/community/stem-academy/microbit/blog/2016/09/16/1-microbit-1-raspberry-pi-3-1-bluez-upgrade-1-huge-headache
+- hosts: pi
+
+  vars:
+    bluez_version: 5.37
+
+  tasks:
+  - name: Installing System Packages (BlueZ dependencies)
+    apt: name={{ item }} state=present update_cache=yes
+    with_items:
+      - bluetooth
+      - bluez-tools
+      - autoconf
+      #- glib2.0
+      - libusb-dev # for compiling BlueZ
+      - libdbus-1-dev # for compiling BlueZ
+      - libglib2.0-dev # for compiling BlueZ
+      - libudev-dev # for compiling BlueZ
+      - libical-dev # for compiling BlueZ
+      - libreadline-dev # for compiling BlueZ
+    become: true
+
+  - name: Download Bluez
+    get_url: url=http://www.kernel.org/pub/linux/bluetooth/bluez-{{bluez_version}}.tar.gz dest=/root
+    become: true
+
+  - name: Untar Bluez
+    command: chdir=/root creates=bluez-{{bluez_version}} tar -xf bluez-{{bluez_version}}.tar.gz
+    become: true
+
+  - name: configure Bluez
+    #command: creates=/root/bluez-{{bluez_version}}/Makefile chdir=/root/bluez-{{bluez_version}} ./configure
+    command: creates=/root/bluez-{{bluez_version}}/Makefile chdir=/root/bluez-{{bluez_version}} ./configure \
+            --prefix=/usr \
+            --mandir=/usr/share/man \
+            --sysconfdir=/etc \
+            --localstatedir=/var \
+            --enable-experimental \
+            --enable-maintainer-mode
+    become: true
+
+  - name: make Bluez
+    command: creates=/root/bluez-{{bluez_version}}/attrib/gatttool chdir=/root/bluez-{{bluez_version}} make -j4
+    become: true
+
+  - name: install Bluez
+    command: creates=/root/bluez-{{bluez_version}}/attrib/gatttool chdir=/root/bluez-{{bluez_version}} make install
+
+# sudo cp attrib/gatttool /usr/bin
+# sudo sed -i '/^ExecStart.*bluetoothd\s*$/ s/$/ --experimental/' /lib/systemd/system/bluetooth.service
+# sudo ln -s /lib/firmware /etc/firmware
+# sudo systemctl enable bluetooth
+# sudo systemctl daemon-reload
+# need to run this after restart. every time... - /usr/bin/hciattach /dev/ttyAMA0 bcm43xx 921600 noflow -
+# sudo apt-mark hold bluez
