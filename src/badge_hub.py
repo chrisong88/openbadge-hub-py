@@ -598,14 +598,15 @@ def test(mgr, start_recording):
         for device in scanned_devices:
             to_be_completed.put(device)
 
-        t1 = Thread(target=collect_data, args=(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode))
-        t2 = Thread(target=collect_data, args=(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode))
+        threads = []
+        for i in range(4): #change the range to choose how many threads to create (currently # of threads must equal # of badges)
+            threads.append(Thread(target=collect_data, args=(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode)))
 
-        t1.start()
-        t2.start()
+        for thread in threads:
+            thread.start()
 
-        t1.join()
-        t2.join()
+        for thread in threads:
+            thread.join()
 
         # clean up any leftover bluepy processes
         kill_bluepy()
