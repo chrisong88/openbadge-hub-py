@@ -16,6 +16,9 @@ from datetime import datetime as dt
 from requests.exceptions import RequestException
 import glob
 import traceback
+#TESTING ONLY
+import Queue
+from threading import Thread
 
 from badge import *
 from badge_discoverer import BadgeDiscoverer
@@ -538,6 +541,77 @@ def add_load_badges_command_options(subparsers):
                            , type=str
                            , help='Badges CSV file to load. Structure: name,email,mac_address')
 
+# TESTING ONLY
+def test(mgr, start_recording):
+    logger.info('Started pulling')
+    activate_audio = False
+    activate_proximity = False
+
+    if start_recording is None or start_recording == "both":
+        activate_audio = True
+        activate_proximity = True
+    elif start_recording == "audio":
+        activate_audio = True
+    elif start_recording == "proximity":
+        activate_proximity = True
+    elif start_recording == "none":
+        activate_audio = False
+        activate_proximity = False
+
+    logger.info("Start recording: Audio = {}, Proximity = {}".format(activate_audio, activate_proximity))
+    mode = "server" if isinstance(mgr, BadgeManagerServer) else "standalone"
+
+    while True:
+        mgr.pull_badges_list()
+        # When we refactor we can change this, but for now:
+        if mode == "server":
+            logger.info("Attempting to offload data to server")
+            offload_data()
+        logger.info("Scanning for devices...")
+        scanned_devices = scan_for_devices(mgr.badges.keys())
+        # iterate before the actual data collection loop just to offload
+        # voltages to the server (and update heartbeat on server)
+        for device in scanned_devices:
+            b = mgr.badges.get(device['mac'])
+            # i don't think adv_payload is ever supposed to be empty,
+            # but sometimes it is. and when it is, it breaks
+            if device['device_info']['adv_payload'] is not None:
+                b.last_voltage = device['device_info']['adv_payload']['voltage']
+            b.last_seen_ts = time.time()
+            mgr.send_badge(device['mac'])
+
+        # now the actual data collection
+        def collect_data(mgr, device, activate_audio, activate_proximity, mode):
+            b = mgr.badges.get(device['mac'])
+            # try to update latest badge timestamps from the server
+            mgr.pull_badge(b.addr)
+            # pull data
+            dialogue(b, activate_audio, activate_proximity, mode)
+
+            # update timestamps on server
+            mgr.send_badge(device['mac'])
+
+            time.sleep(2)  # requires sleep between devices
+
+        to_be_completed = Queue.Queue()
+
+        for device in scanned_devices:
+            to_be_completed.put(device)
+
+        t1 = Thread(target=collect_data, args=(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode))
+        t2 = Thread(target=collect_data, args=(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode))
+
+        t1.start()
+        t2.start()
+
+        t1.join()
+        t2.join()
+
+        # clean up any leftover bluepy processes
+        kill_bluepy()
+
+
+
 if __name__ == "__main__":
     import time
     import argparse
@@ -572,10 +646,17 @@ if __name__ == "__main__":
     if args.mode == "scan":
         devices_scanner(mgr)
 
+
+    # TESTING ONLY
+    if args.mode == 'pull':
+        test(mgr, args.start_recording)
+
+
+    """:
     # pull data from all devices
     if args.mode == "pull":
         pull_devices(mgr, args.start_recording)
-
+    """
     if args.mode == "start_all":
         start_all_devices(mgr)
 
