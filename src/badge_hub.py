@@ -209,7 +209,7 @@ def _create_pending_file_name(data_type):
 
     return filename 
      
-def dialogue(bdg, activate_audio, activate_proximity, mode="server"):
+def dialogue(bdg, activate_audio, activate_proximity, mode="server", suffix = ""): #TESTING ONLY added suffix
     """
     Attempts to read data from the device specified by the address. Reading is handled by gatttool.
     :param bdg:
@@ -229,7 +229,7 @@ def dialogue(bdg, activate_audio, activate_proximity, mode="server"):
         logger.info("saving chunks to file")
 
         # store in JSON file
-        with open(get_audio_name(mode), "a") as fout:
+        with open(get_audio_name(mode) + suffix, "a") as fout:
             for chunk in bdg.dlg.chunks:
                 ts_with_ms = round_float_for_log(ts_and_fract_to_float(chunk.ts, chunk.fract))
                 log_line = {
@@ -543,12 +543,12 @@ def add_load_badges_command_options(subparsers):
 
 # TESTING ONLY
 
-def collect_data(mgr, device, activate_audio, activate_proximity, mode):
+def collect_data(mgr, device, activate_audio, activate_proximity, mode, threadName):
     b = mgr.badges.get(device['mac'])
     # try to update latest badge timestamps from the server
     mgr.pull_badge(b.addr)
     # pull data
-    dialogue(b, activate_audio, activate_proximity, mode)
+    dialogue(b, activate_audio, activate_proximity, mode, threadName)
 
     # update timestamps on server
     mgr.send_badge(device['mac'])
@@ -559,9 +559,9 @@ class collect_data_Consumer:
     def __init__(self):
         pass
 
-    def run(self, mgr, activate_audio, activate_proximity, mode, to_be_completed):
+    def run(self, mgr, activate_audio, activate_proximity, mode, to_be_completed, threadName):
         while not to_be_completed.empty():
-            collect_data(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode)
+            collect_data(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode, threadName)
 
 def test(mgr, start_recording):
     logger.info('Started pulling')
@@ -609,9 +609,10 @@ def test(mgr, start_recording):
             to_be_completed.put(device)
 
         cthreads = []
-        for i in range(4): #change the range to choose how many threads to create
+        for i in range(3): #change the range to choose how many threads to create
+            threadName = "_thread" + str(i)
             newConsumer = collect_data_Consumer()
-            cthread = Thread(target=newConsumer.run, args=(mgr, activate_audio, activate_proximity, mode, to_be_completed))
+            cthread = Thread(target=newConsumer.run, args=(mgr, activate_audio, activate_proximity, mode, to_be_completed, threadName))
             cthreads.append(cthread)
             cthread.start()
 
