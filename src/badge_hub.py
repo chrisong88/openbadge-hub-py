@@ -392,63 +392,6 @@ def kill_bluepy():
             logger.error("Unable to kill process with pid {}".format(pid))
             logger.error(err)
 
-
-
-def pull_devices(mgr, start_recording):
-    logger.info('Started pulling')
-    activate_audio = False
-    activate_proximity = False
-
-    if start_recording is None or start_recording == "both":
-        activate_audio = True
-        activate_proximity = True
-    elif start_recording == "audio":
-        activate_audio = True
-    elif start_recording == "proximity":
-        activate_proximity = True
-    elif start_recording == "none":
-        activate_audio = False
-        activate_proximity = False
-
-    logger.info("Start recording: Audio = {}, Proximity = {}".format(activate_audio,activate_proximity))
-    mode = "server" if isinstance(mgr, BadgeManagerServer) else "standalone"
-
-    while True:
-        mgr.pull_badges_list()
-        # When we refactor we can change this, but for now:
-        if mode == "server":
-            logger.info("Attempting to offload data to server")
-            offload_data()
-        logger.info("Scanning for devices...")
-        scanned_devices = scan_for_devices(mgr.badges.keys())
-        # iterate before the actual data collection loop just to offload
-        # voltages to the server (and update heartbeat on server)
-        for device in scanned_devices:
-            b = mgr.badges.get(device['mac'])
-            # i don't think adv_payload is ever supposed to be empty,
-            # but sometimes it is. and when it is, it breaks
-            if device['device_info']['adv_payload'] is not None:
-                b.last_voltage = device['device_info']['adv_payload']['voltage']
-            b.last_seen_ts = time.time()
-            mgr.send_badge(device['mac'])
-
-        # now the actual data collection
-        for device in scanned_devices:
-            b = mgr.badges.get(device['mac'])
-            # try to update latest badge timestamps from the server
-            mgr.pull_badge(b.addr)
-            # pull data
-            dialogue(b, activate_audio, activate_proximity, mode)
-
-            # update timestamps on server
-            mgr.send_badge(device['mac'])
-
-            time.sleep(2)  # requires sleep between devices
-
-        # clean up any leftover bluepy processes
-        kill_bluepy()
-
-
 def sync_all_devices(mgr):
     logger.info('Syncing all badges recording.')
     mgr.pull_badges_list()
@@ -542,7 +485,6 @@ def add_load_badges_command_options(subparsers):
                            , help='Badges CSV file to load. Structure: name,email,mac_address')
 
 # TESTING ONLY
-
 def collect_data(mgr, device, activate_audio, activate_proximity, mode, threadName):
     b = mgr.badges.get(device['mac'])
     # try to update latest badge timestamps from the server
@@ -555,7 +497,7 @@ def collect_data(mgr, device, activate_audio, activate_proximity, mode, threadNa
 
     time.sleep(2)  # requires sleep between devices
 
-class collect_data_Consumer:
+class collect_data_Consumer: #runs collect_data function on a list of badges
     def __init__(self):
         pass
 
@@ -563,7 +505,7 @@ class collect_data_Consumer:
         while not to_be_completed.empty():
             collect_data(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode, threadName)
 
-def test(mgr, start_recording):
+def pull_data(mgr, start_recording):
     logger.info('Started pulling')
     activate_audio = False
     activate_proximity = False
@@ -658,16 +600,10 @@ if __name__ == "__main__":
     if args.mode == "scan":
         devices_scanner(mgr)
 
-
-    # TESTING ONLY
-    if args.mode == 'pull':
-        test(mgr, args.start_recording)
-
-    """:
     # pull data from all devices
-    if args.mode == "pull":
-        pull_devices(mgr, args.start_recording)
-    """
+    if args.mode == 'pull':
+        pull_data(mgr, args.start_recording)
+
     if args.mode == "start_all":
         start_all_devices(mgr)
 
