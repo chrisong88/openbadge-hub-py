@@ -16,9 +16,8 @@ from datetime import datetime as dt
 from requests.exceptions import RequestException
 import glob
 import traceback
-#TESTING ONLY
 import Queue
-from threading import Thread
+from multiprocessing import Process, Queue
 
 from badge import *
 from badge_discoverer import BadgeDiscoverer
@@ -209,7 +208,7 @@ def _create_pending_file_name(data_type):
 
     return filename 
      
-def dialogue(bdg, activate_audio, activate_proximity, mode="server", suffix = ""): #TESTING ONLY added suffix
+def dialogue(bdg, activate_audio, activate_proximity, mode="server", suffix = ""):
     """
     Attempts to read data from the device specified by the address. Reading is handled by gatttool.
     :param bdg:
@@ -484,13 +483,12 @@ def add_load_badges_command_options(subparsers):
                            , type=str
                            , help='Badges CSV file to load. Structure: name,email,mac_address')
 
-# TESTING ONLY
-def collect_data(mgr, device, activate_audio, activate_proximity, mode, threadName):
+def collect_data(mgr, device, activate_audio, activate_proximity, mode, processName):
     b = mgr.badges.get(device['mac'])
     # try to update latest badge timestamps from the server
     mgr.pull_badge(b.addr)
     # pull data
-    dialogue(b, activate_audio, activate_proximity, mode, threadName)
+    dialogue(b, activate_audio, activate_proximity, mode, processName)
 
     # update timestamps on server
     mgr.send_badge(device['mac'])
@@ -501,9 +499,9 @@ class collect_data_Consumer: #runs collect_data function on a list of badges
     def __init__(self):
         pass
 
-    def run(self, mgr, activate_audio, activate_proximity, mode, to_be_completed, threadName):
+    def run(self, mgr, activate_audio, activate_proximity, mode, to_be_completed, processName):
         while not to_be_completed.empty():
-            collect_data(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode, threadName)
+            collect_data(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode, processName)
 
 def pull_data(mgr, start_recording):
     logger.info('Started pulling')
@@ -545,21 +543,21 @@ def pull_data(mgr, start_recording):
 
         # now the actual data collection
 
-        to_be_completed = Queue.Queue()
+        to_be_completed = Queue()
 
         for device in scanned_devices:
             to_be_completed.put(device)
 
-        cthreads = []
-        for i in range(3): #change the range to choose how many threads to create
-            threadName = "_thread" + str(i)
+        cprocesses = []
+        for i in range(3): #change the range to choose how many processes to create
+            processName = "_process" + str(i)
             newConsumer = collect_data_Consumer()
-            cthread = Thread(target=newConsumer.run, args=(mgr, activate_audio, activate_proximity, mode, to_be_completed, threadName))
-            cthreads.append(cthread)
-            cthread.start()
+            cprocess = Process(target=newConsumer.run, args=(mgr, activate_audio, activate_proximity, mode, to_be_completed, processName))
+            cprocesses.append(cprocess)
+            cprocess.start()
 
-        for cthread in cthreads:
-            cthread.join()
+        for cprocess in cprocesses:
+            cprocess.join()
 
         # clean up any leftover bluepy processes
         kill_bluepy()
