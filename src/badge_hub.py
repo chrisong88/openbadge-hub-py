@@ -23,7 +23,7 @@ from badge import *
 from badge_discoverer import BadgeDiscoverer
 from badge_manager_server import BadgeManagerServer
 from badge_manager_standalone import BadgeManagerStandalone
-import hub_manager 
+import hub_manager
 from settings import DATA_DIR, LOG_DIR
 
 log_file_name = LOG_DIR + 'hub.log'
@@ -33,8 +33,8 @@ pending_file_prefix = DATA_DIR + 'pending_'
 audio_archive_file_name = DATA_DIR + 'audio_archive.txt'
 proximity_archive_file_name = DATA_DIR + 'proximity_archive.txt'
 
-standalone_audio_file = DATA_DIR + 'audio_data.txt'
-standalone_proximity_file = DATA_DIR + 'proximity_data.txt'
+standalone_audio_file = DATA_DIR + 'audio_data.txt' #THIS NEEDS TO BE CHANGED TO ACCOUNT FOR MULTIPLE AUDIO FILES
+standalone_proximity_file = DATA_DIR + 'proximity_data.txt' #THIS TOO
 
 AUDIO = "audio"
 PROXIMITY = "proximity"
@@ -206,8 +206,8 @@ def _create_pending_file_name(data_type):
         now = '_'.join((now, str(len(files) + 1)))
         filename =  "{}{}_{}.txt".format(pending_file_prefix, now, data_type)
 
-    return filename 
-     
+    return filename
+
 def dialogue(bdg, activate_audio, activate_proximity, mode="server", suffix = ""):
     """
     Attempts to read data from the device specified by the address. Reading is handled by gatttool.
@@ -271,7 +271,7 @@ def dialogue(bdg, activate_audio, activate_proximity, mode="server", suffix = ""
     if bdg.dlg.scans:
         logger.info("Proximity scans received: {}".format(len(bdg.dlg.scans)))
         logger.info("saving proximity scans to file")
-        with open(get_proximity_name(mode), "a") as fout:
+        with open(get_proximity_name(mode) + suffix, "a") as fout:
             for scan in bdg.dlg.scans:
                 ts_with_ms = round_float_for_log(scan.ts)
                 log_line = {
@@ -499,11 +499,14 @@ class collect_data_Consumer: #runs collect_data function on a list of badges
     def __init__(self):
         pass
 
-    def run(self, mgr, activate_audio, activate_proximity, mode, to_be_completed, processName):
-        while not to_be_completed.empty():
-            collect_data(mgr, to_be_completed.get(), activate_audio, activate_proximity, mode, processName)
+    def run(self, mgr, activate_audio, activate_proximity, mode, in_queue, out_queue, processName):
+        while not in_queue.empty():
+            device = in_queue.get() #pulls a device name from the in_queue
+            collect_data(mgr, device, activate_audio, activate_proximity, mode, processName)
+            b = mgr.badges.get(device['mac'])
+            out_queue.put((device, b.get_timestamps())) #passes tuple (device name, timestamps) to out_queue
 
-def pull_data(mgr, start_recording):
+def pull_devices(mgr, start_recording):
     logger.info('Started pulling')
     activate_audio = False
     activate_proximity = False
@@ -543,21 +546,40 @@ def pull_data(mgr, start_recording):
 
         # now the actual data collection
 
-        to_be_completed = Queue()
+        in_queue = Queue() #Queue of device names
+        out_queue = Queue() #Queue of badges
 
         for device in scanned_devices:
-            to_be_completed.put(device)
+            in_queue.put(device)
 
         cprocesses = []
-        for i in range(3): #change the range to choose how many processes to create
+        for i in range(4): #change the range to choose how many processes to create
             processName = "_process" + str(i)
             newConsumer = collect_data_Consumer()
-            cprocess = Process(target=newConsumer.run, args=(mgr, activate_audio, activate_proximity, mode, to_be_completed, processName))
+            cprocess = Process(target=newConsumer.run, args=(mgr, activate_audio, activate_proximity, mode, in_queue, out_queue, processName))
             cprocesses.append(cprocess)
             cprocess.start()
 
         for cprocess in cprocesses:
             cprocess.join()
+
+        #applying updated timestamps from out_queue to badges in main process
+        logger.info("Updating timestamps in main process")
+        while not out_queue.empty():
+            temp = out_queue.get()
+            device = temp[0]
+            timestamps = temp[1]
+            b = mgr.badges.get(device['mac'])
+            #checking to see that the new timestamps are not the same as the current timestamps
+            if b.last_audio_ts_int != timestamps["last_audio_ts_int"] and b.last_audio_ts_fract != timestamps["last_audio_ts_fract"]:
+                b.set_audio_ts(timestamps["last_audio_ts_int"],timestamps["last_audio_ts_fract"])
+            else:
+                logger.info("{}: Audio timestamps were the same. Didn't update.".format((b.addr)))
+            if b.last_proximity_ts != timestamps["last_proximity_ts"]:
+                b.last_proximity_ts = timestamps["last_proximity_ts"]
+            else:
+                logger.info("{}: Proximity timestamps were the same. Didn't update.".format(b.addr))
+        logger.debug("Done updating")
 
         # clean up any leftover bluepy processes
         kill_bluepy()
@@ -600,7 +622,7 @@ if __name__ == "__main__":
 
     # pull data from all devices
     if args.mode == 'pull':
-        pull_data(mgr, args.start_recording)
+        pull_devices(mgr, args.start_recording)
 
     if args.mode == "start_all":
         start_all_devices(mgr)

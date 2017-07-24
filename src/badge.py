@@ -48,10 +48,8 @@ class timeout:
         raise TimeoutError(self.error_message)
 
     def __enter__(self):
-
         signal.signal(signal.SIGALRM, self.handle_timeout)
         signal.alarm(self.seconds)
-
 
     def __exit__(self, type, value, traceback):
         signal.alarm(0)
@@ -329,6 +327,16 @@ class Badge:
         else:
             # no value is set yetyet
             return True
+
+    def get_timestamps(self):
+        """
+        Returns a dictionary of audio and proximity timestamps
+        """
+        timestamps = {}
+        timestamps["last_proximity_ts"] = self.last_proximity_ts
+        timestamps["last_audio_ts_int"] = self.last_audio_ts_int
+        timestamps["last_audio_ts_fract"] = self.last_audio_ts_fract
+        return timestamps
 
     def __init__(self, addr,logger, key, init_audio_ts_int=None, init_audio_ts_fract=None, init_proximity_ts=None, init_voltage=None):
         #if self.children.get(key):
