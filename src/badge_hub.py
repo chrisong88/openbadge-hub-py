@@ -33,8 +33,8 @@ pending_file_prefix = DATA_DIR + 'pending_'
 audio_archive_file_name = DATA_DIR + 'audio_archive.txt'
 proximity_archive_file_name = DATA_DIR + 'proximity_archive.txt'
 
-standalone_audio_file = DATA_DIR + 'audio_data.txt' #THIS NEEDS TO BE CHANGED TO ACCOUNT FOR MULTIPLE AUDIO FILES
-standalone_proximity_file = DATA_DIR + 'proximity_data.txt' #THIS TOO
+standalone_audio_file = DATA_DIR + 'audio_data.txt'
+standalone_proximity_file = DATA_DIR + 'proximity_data.txt'
 
 AUDIO = "audio"
 PROXIMITY = "proximity"
