@@ -267,6 +267,12 @@ class BadgeAddressAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
         return '[%s] %s' % (self.extra['addr'], msg), kwargs
 
+class PIDAdapter(logging.LoggerAdapter):
+    """
+    Log adapter that passes process id to be prepended to the log message
+    """
+    def process(self, msg, kwargs):
+        return '[%s] %s' % (self.extra['pid'], msg), kwargs
 
 class Badge:
     children = {}

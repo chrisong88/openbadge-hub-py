@@ -499,7 +499,17 @@ class collect_data_Consumer: #runs collect_data function on a list of badges
     def __init__(self):
         pass
 
-    def run(self, mgr, activate_audio, activate_proximity, mode, in_queue, out_queue, processName):
+    def run(self, mgr, activate_audio, activate_proximity, mode, in_queue, out_queue, processName, logger):
+        #currently hardcoded in, would like to improve this using loggeradapters to inherit behavior of parent logger
+        file_handler = logging.FileHandler(log_file_name)
+        stream_handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(process)d - %(message)s')
+        file_handler.setFormatter(formatter)
+        stream_handler.setFormatter(formatter)
+        logger.removeHandler(fh)
+        logger.removeHandler(ch)
+        logger.addHandler(file_handler)
+        logger.addHandler(stream_handler)
         while not in_queue.empty():
             device = in_queue.get() #pulls a device name from the in_queue
             collect_data(mgr, device, activate_audio, activate_proximity, mode, processName)
@@ -548,6 +558,8 @@ def pull_devices(mgr, start_recording):
 
         in_queue = Queue() #Queue of device names
         out_queue = Queue() #Queue of badges
+        out_audio_files = [] #list of names of audio files that processes write to
+        out_proximity_files = [] #list of names of proximity files that processes write to
 
         for device in scanned_devices:
             in_queue.put(device)
@@ -556,9 +568,16 @@ def pull_devices(mgr, start_recording):
         for i in range(4): #change the range to choose how many processes to create
             processName = "_process" + str(i)
             newConsumer = collect_data_Consumer()
-            cprocess = Process(target=newConsumer.run, args=(mgr, activate_audio, activate_proximity, mode, in_queue, out_queue, processName))
+            cprocess = Process(target=newConsumer.run, args=(mgr, activate_audio, activate_proximity, mode, in_queue, out_queue, processName, logger))
             cprocesses.append(cprocess)
+            out_audio_files.append(get_audio_name(mode) + processName)
+            out_proximity_files.append(get_proximity_name(mode) + processName)
+            audio_file = open(get_audio_name(mode) + processName, 'w') #makes an audio file for the process to write to
+            audio_file.close()
+            proximity_file = open(get_proximity_name(mode) + processName, 'w') #makes a proximity file for the process to write to
+            proximity_file.close()
             cprocess.start()
+            time.sleep(1)
 
         for cprocess in cprocesses:
             cprocess.join()
@@ -575,14 +594,40 @@ def pull_devices(mgr, start_recording):
                 b.set_audio_ts(timestamps["last_audio_ts_int"],timestamps["last_audio_ts_fract"])
             else:
                 logger.info("{}: Audio timestamps were the same. Didn't update.".format((b.addr)))
+
             if b.last_proximity_ts != timestamps["last_proximity_ts"]:
                 b.last_proximity_ts = timestamps["last_proximity_ts"]
             else:
                 logger.info("{}: Proximity timestamps were the same. Didn't update.".format(b.addr))
         logger.debug("Done updating")
 
+        logger.debug("Compiling data from multiple audio files into one audio file")
+        for infile in out_audio_files:
+            with open(infile) as fin:
+                with open(get_audio_name(mode), 'a') as fout:
+                    for line in fin:
+                        fout.write(line)
+
+        for infile in out_audio_files:
+            os.remove(infile)
+
+
+        logger.debug("Compiling data from multiple proximity files into one proximity file")
+        for infile in out_proximity_files:
+            with open(infile) as fin:
+                with open(get_proximity_name(mode), 'a') as fout:
+                    for line in fin:
+                        fout.write(line)
+
+        for infile in out_proximity_files:
+            os.remove(infile)
+
         # clean up any leftover bluepy processes
         kill_bluepy()
+        # reset bluetooth (have to reset because bluetooth occasionally gets weird and completely breaks down)
+        reset()
+        logger.info("Sleeping between cycles")
+        time.sleep(10)
 
 
 
